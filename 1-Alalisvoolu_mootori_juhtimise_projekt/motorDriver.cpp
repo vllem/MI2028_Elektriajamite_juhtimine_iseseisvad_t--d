@@ -1,5 +1,5 @@
 /*
-  motor.cpp
+  motorDriver.cpp
   Mootori liidese teostus.
 
 
