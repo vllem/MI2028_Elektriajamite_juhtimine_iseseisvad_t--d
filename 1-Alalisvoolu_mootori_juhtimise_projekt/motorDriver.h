@@ -1,5 +1,5 @@
 /*
-  motor.h
+  motorDriver.h
   Mootori liides: structid, mis kirjeldavad mootori(te) parameetreid ja ühendust,
   ning funktsioonid mootori(te) juhtimiseks.
 
