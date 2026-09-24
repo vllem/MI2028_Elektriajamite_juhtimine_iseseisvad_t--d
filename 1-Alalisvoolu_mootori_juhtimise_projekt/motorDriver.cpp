@@ -12,7 +12,6 @@
 
 /*
   applyOutput on abifunktsioon, mis paneb paika kuidas peaks(id) töötama mootor(id).
-  "static" tähendab, et see on nähtav ainult selles failis.
 */
 
 static void applyOutput(struct motorFactory &motor) {
