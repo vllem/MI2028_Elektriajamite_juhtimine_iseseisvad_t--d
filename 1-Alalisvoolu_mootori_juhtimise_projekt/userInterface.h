@@ -1,5 +1,5 @@
 /*
-  commands.h
+  userInterface.h
   Käsukäsitlus: Serial monitorist käskude tõlgendamine ja täitmine.
 
   MI.2028 Elektriajamite juhtimine
