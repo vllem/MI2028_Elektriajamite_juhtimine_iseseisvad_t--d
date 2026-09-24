@@ -1,5 +1,5 @@
 /*
-  commands.cpp
+  userInterface.cpp
   Käsukäsitluse teostus.
 
   MI.2028 Elektriajamite juhtimine
