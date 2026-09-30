@@ -103,3 +103,17 @@ void handleCommand(struct motorFactory &motor, String input) {
 
   Serial.println("Unknown command! Type 'help' to see available commands.");
 }
+
+void pollSerial(struct motorFactory &motor) {
+  static String inputLine;
+
+  while (Serial.available() > 0) {
+    char c = Serial.read();
+    if (c == '\n') {
+      handleCommand(motor, inputLine);
+      inputLine = "";
+    } else if (c != '\r') {
+      inputLine += c;
+    }
+  }
+}

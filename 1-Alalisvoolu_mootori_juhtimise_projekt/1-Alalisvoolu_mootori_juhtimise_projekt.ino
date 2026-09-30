@@ -27,7 +27,5 @@ void setup() {
 }
 
 void loop() {
-  if (Serial.available() > 0) {
-    handleCommand(DC, Serial.readStringUntil('\n'));
-  }
+  pollSerial(DC);
 }

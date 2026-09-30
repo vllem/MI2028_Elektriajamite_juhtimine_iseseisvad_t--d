@@ -33,6 +33,10 @@ struct command {
 // handleCommand võtab sisendrea (nt "speed 150") ja käivitab vastava käsu.
 void handleCommand(struct motorFactory &motor, String input);
 
+// pollSerial loeb Serial-ist saadaolevad baidid ilma blokeerimata ning
+// käivitab handleCommand'i, kui terve rida (lõpuga '\n') on kokku kogutud.
+void pollSerial(struct motorFactory &motor);
+
 // Käsufunktsioonide eeldeklaratsioonid, et neid saaks kasutada tabelis enne nende definitsiooni
 static void cmdStart(struct motorFactory &motor, const String &arg);
 static void cmdStop(struct motorFactory &motor, const String &arg);
