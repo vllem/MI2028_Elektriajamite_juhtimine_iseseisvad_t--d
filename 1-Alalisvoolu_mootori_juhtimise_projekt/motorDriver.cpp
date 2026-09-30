@@ -22,7 +22,16 @@ static void applyOutput(struct motorFactory &motor) {
   }
 }
 
+/*
+  'start' käivitab mootori alati kiirusel 0, et vältida olukorda, kus mootor
+  hüppab käivitamisel järsult varasemalt seatud (nt maksimum) kiirusele.
+  Kasutaja peab kiiruse peale mootori käivitamist ise 'speed' käsuga määrama.
+*/
+
 void start(struct motorFactory &motor) {
+  if (!motor.motionSequence.isRunning) {
+    motor.motionSequence.speed = 0;
+  }
   motor.motionSequence.isRunning = true;
   applyOutput(motor);
 }

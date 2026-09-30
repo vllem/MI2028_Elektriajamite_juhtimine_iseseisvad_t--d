@@ -17,7 +17,7 @@ struct motorFactory DC;
 void setup() {
   Serial.begin(9600);
 
-  DC.motorPin = LED_BUILTIN;
+  DC.motorPin = 13;
   DC.motionSequence = {false, 0};
 
   pinMode(DC.motorPin, OUTPUT);
