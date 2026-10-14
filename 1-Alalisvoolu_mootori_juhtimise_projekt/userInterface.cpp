@@ -14,6 +14,9 @@ static const struct command commands[] = {
   { "start", cmdStart, "start",         "Start the motor" },
   { "stop",  cmdStop,  "stop",          "Stop the motor" },
   { "speed", cmdSpeed, "speed <0-255>", "Set the speed (or just enter a number)" },
+  { "dir",   cmdDir,   "dir <cw|ccw>",  "Set stepper direction (stepper only)" },
+  { "steps", cmdSteps, "steps <1-65535>", "Move a number of steps, then stop (stepper only)" },
+  { "angle", cmdAngle, "angle <degrees>", "Turn by an angle, negative = counter-clockwise (stepper only)" },
   { "help",  cmdHelp,  "help",          "Show all commands" },
 };
 
@@ -34,12 +37,12 @@ static void cmdStop(struct motorFactory &motor, const String &arg) {
 
 /*
   isNumeric on abifunktsioon, millega saab määrata kas sõne on tegelikult number.
-  See funktsioon piirab ka kõik numbrid kolme kohani, et hoida ära situatsiooni, kus sisestatakse number nagu
+  See funktsioon piirab ka kõik numbrid vaikimisi kolme kohani (maxLen), et hoida ära situatsiooni, kus sisestatakse number nagu
   "99999999999", mis lõppeks täisarvu ületäituvusega (integer overflow).
 */
 
-static bool isNumeric(const String &s) {
-  if (s.length() == 0 || s.length() > 3) return false;
+static bool isNumeric(const String &s, unsigned int maxLen = 3) {
+  if (s.length() == 0 || s.length() > maxLen) return false;
   for (unsigned int i = 0; i < s.length(); i++) {
     if (!isDigit(s[i])) return false;
   }
@@ -63,6 +66,59 @@ static void cmdSpeed(struct motorFactory &motor, const String &arg) {
     Serial.print("Speed saved (motor is stopped, enter 'start'): ");
   }
   Serial.println(motor.motionSequence.speed);
+}
+
+static void cmdDir(struct motorFactory &motor, const String &arg) {
+  if (motor.type != MOTOR_STEPPER) {
+    Serial.println("Error: 'dir' works only with a stepper motor.");
+    return;
+  }
+  if (arg.equalsIgnoreCase("cw")) {
+    setDirection(motor, true);
+    Serial.println("Direction: clockwise.");
+  } else if (arg.equalsIgnoreCase("ccw")) {
+    setDirection(motor, false);
+    Serial.println("Direction: counter-clockwise.");
+  } else {
+    Serial.println("Error: Use 'dir cw' or 'dir ccw'.");
+  }
+}
+
+static void cmdSteps(struct motorFactory &motor, const String &arg) {
+  if (motor.type != MOTOR_STEPPER) {
+    Serial.println("Error: 'steps' works only with a stepper motor.");
+    return;
+  }
+  if (!isNumeric(arg, 5) || arg.toInt() < 1 || arg.toInt() > 65535L) {
+    Serial.println("Error: Use 'steps <1-65535>', e.g. 'steps 200'.");
+    return;
+  }
+  if (motor.motionSequence.speed == 0) {
+    Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
+  }
+  moveSteps(motor, (uint32_t)arg.toInt());
+  Serial.print("Moving steps: ");
+  Serial.println(arg);
+}
+
+static void cmdAngle(struct motorFactory &motor, const String &arg) {
+  if (motor.type != MOTOR_STEPPER) {
+    Serial.println("Error: 'angle' works only with a stepper motor.");
+    return;
+  }
+  bool negative = arg.length() > 0 && arg[0] == '-';
+  String digits = negative ? arg.substring(1) : arg;
+  if (!isNumeric(digits, 4) || digits.toInt() == 0) {
+    Serial.println("Error: Use 'angle <degrees>', e.g. 'angle 180' or 'angle -90'.");
+    return;
+  }
+  if (motor.motionSequence.speed == 0) {
+    Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
+  }
+  long deg = digits.toInt();
+  moveAngle(motor, negative ? -deg : deg);
+  Serial.print("Turning degrees: ");
+  Serial.println(negative ? -deg : deg);
 }
 
 static void cmdHelp(struct motorFactory &motor, const String &arg) {

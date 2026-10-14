@@ -12,20 +12,19 @@
 #include "motorDriver.h"
 #include "userInterface.h"
 
-struct motorFactory DC;
+struct motorFactory motor;
 
 void setup() {
   Serial.begin(9600);
 
-  DC.motorPin = 13;
-  DC.motionSequence = {false, 0};
-
-  pinMode(DC.motorPin, OUTPUT);
-  stop(DC);
+  motor.initStepper(8, 9, 10, 11);  // ULN2003 IN1..IN4 = pinid 8..11
+  // motor.initDC(3);               // Alalisvoolumootor: PWM = pin 3
+  stop(motor);
 
   Serial.println("Ready. Type 'help' to see available commands.");
 }
 
 void loop() {
-  pollSerial(DC);
+  pollSerial(motor);
+  updateMotor(motor);
 }

@@ -41,6 +41,9 @@ void pollSerial(struct motorFactory &motor);
 static void cmdStart(struct motorFactory &motor, const String &arg);
 static void cmdStop(struct motorFactory &motor, const String &arg);
 static void cmdSpeed(struct motorFactory &motor, const String &arg);
+static void cmdDir(struct motorFactory &motor, const String &arg);
+static void cmdSteps(struct motorFactory &motor, const String &arg);
+static void cmdAngle(struct motorFactory &motor, const String &arg);
 static void cmdHelp(struct motorFactory &motor, const String &arg);
 
 #endif // COMMANDS_H
