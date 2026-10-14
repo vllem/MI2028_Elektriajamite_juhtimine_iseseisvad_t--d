@@ -26,21 +26,61 @@ static void writeCoils(struct motorFactory &motor, uint8_t pattern) {
 }
 
 /*
-  applyOutput on abifunktsioon, mis paneb paika kuidas peaks(id) töötama mootor(id).
+  dcApply paneb paika, kuidas peaks töötama alalisvoolumootor. DC-mootor ei vaja update'i.
 */
 
-static void applyOutput(struct motorFactory &motor) {
-  // Samm-mootori sammud tehakse updateMotor'is; siin lülitatakse peatumisel poolid välja,
-  // et ULN2003 ja mootor ei kuumeneks asjata.
-  if (motor.type == MOTOR_STEPPER) {
-    if (!motor.motionSequence.isRunning) writeCoils(motor, 0);
-    return;
-  }
-
+static void dcApply(struct motorFactory &motor) {
   if (motor.motionSequence.isRunning) {
     analogWrite(motor.motorPin, motor.motionSequence.speed);
   } else {
     analogWrite(motor.motorPin, 0);
+  }
+}
+
+static void dcUpdate(struct motorFactory &motor) {}
+
+/*
+  stepperApply kutsutakse start/stop/setSpeed peale. Peatumisel lülitatakse poolid välja,
+  et ULN2003 ja mootor ei kuumeneks asjata, ning pooleli olnud 'steps' liikumine tühistatakse.
+  Käimas olles nullitakse ajatempel, et kiiruse muutmisel ei tehtaks mahajäänud samme korraga ära.
+*/
+
+static void stepperApply(struct motorFactory &motor) {
+  if (motor.motionSequence.isRunning) {
+    motor.stepper.lastStepUs = micros();
+  } else {
+    motor.stepper.remainingSteps = 0;
+    writeCoils(motor, 0);
+  }
+}
+
+/*
+  stepperUpdate teeb vajadusel ühe sammu. Ajastus põhineb micros()-il, mitte delay()-l,
+  et pollSerial saaks samal ajal käske vastu võtta.
+*/
+
+static void stepperUpdate(struct motorFactory &motor) {
+  if (!motor.motionSequence.isRunning || motor.motionSequence.speed == 0) return;
+
+  unsigned long stepsPerSec = (unsigned long)motor.motionSequence.speed * STEPPER_MAX_STEPS_PER_SEC / 255;
+  if (stepsPerSec == 0) stepsPerSec = 1;
+  unsigned long intervalUs = 1000000UL / stepsPerSec;
+
+  unsigned long now = micros();
+  if (now - motor.stepper.lastStepUs < intervalUs) return;
+  motor.stepper.lastStepUs += intervalUs;
+
+  // Liigume tabelis ühe faasi edasi (või tagasi) ja anname poolidele uue oleku
+  motor.stepper.phase = (motor.stepper.phase + (motor.stepper.clockwise ? 1 : 7)) & 7;
+  writeCoils(motor, HALF_STEP_SEQUENCE[motor.stepper.phase]);
+  motor.stepper.position += motor.stepper.clockwise ? 1 : -1;
+
+  // remainingSteps == 0 tähendab pidevat pöörlemist; lõplik liikumine lõpeb viimase sammuga
+  if (motor.stepper.remainingSteps > 0) {
+    motor.stepper.remainingSteps--;
+    if (motor.stepper.remainingSteps == 0) {
+      stop(motor);
+    }
   }
 }
 
@@ -54,24 +94,18 @@ void start(struct motorFactory &motor) {
   if (!motor.motionSequence.isRunning) {
     motor.motionSequence.speed = 0;
   }
-  if (motor.type == MOTOR_STEPPER) {
-    motor.stepper.continuous = true;
-    motor.stepper.lastStepUs = micros();
-  }
   motor.motionSequence.isRunning = true;
-  applyOutput(motor);
+  motor.apply(motor);
 }
 
 void stop(struct motorFactory &motor) {
   motor.motionSequence.isRunning = false;
-  applyOutput(motor);
+  motor.apply(motor);
 }
 
 void setSpeed(struct motorFactory &motor, uint8_t speed) {
   motor.motionSequence.speed = speed;
-  // Ajatempli nullimine, et kiiruse muutmisel ei tehtaks mahajäänud samme korraga ära
-  motor.stepper.lastStepUs = micros();
-  applyOutput(motor);
+  motor.apply(motor);
 }
 
 /*
@@ -83,8 +117,10 @@ void motorFactory::initDC(uint8_t pwmPin) {
   motor.type = MOTOR_DC;
   motor.motorPin = pwmPin;
   motor.motionSequence = {false, 0};
+  motor.apply = dcApply;
+  motor.update = dcUpdate;
   pinMode(pwmPin, OUTPUT);
-  applyOutput(motor);
+  motor.apply(motor);
 }
 
 /*
@@ -96,7 +132,9 @@ void motorFactory::initStepper(uint8_t in1, uint8_t in2, uint8_t in3, uint8_t in
   motor.type = MOTOR_STEPPER;
   motor.motorPin = in1;
   motor.motionSequence = {false, 0};
-  motor.stepper = {{in1, in2, in3, in4}, 0, true, 0, false, 0, 0};
+  motor.stepper = {{in1, in2, in3, in4}, 0, true, 0, 0, 0};
+  motor.apply = stepperApply;
+  motor.update = stepperUpdate;
 
   for (uint8_t i = 0; i < 4; i++) {
     pinMode(motor.stepper.coilPins[i], OUTPUT);
@@ -116,7 +154,6 @@ void setDirection(struct motorFactory &motor, bool clockwise) {
 
 void moveSteps(struct motorFactory &motor, uint32_t steps) {
   if (motor.type != MOTOR_STEPPER || steps == 0) return;
-  motor.stepper.continuous = false;
   motor.stepper.remainingSteps = steps;
   motor.stepper.lastStepUs = micros();
   motor.motionSequence.isRunning = true;
@@ -133,36 +170,6 @@ void moveAngle(struct motorFactory &motor, int32_t degrees) {
   moveSteps(motor, ((uint64_t)absDeg * STEPPER_STEPS_PER_REV + 180) / 360);
 }
 
-/*
-  updateMotor teeb vajadusel ühe sammu. Ajastus põhineb micros()-il, mitte delay()-l,
-  et pollSerial saaks samal ajal käske vastu võtta.
-*/
-
 void updateMotor(struct motorFactory &motor) {
-  if (motor.type != MOTOR_STEPPER) return;
-  if (!motor.motionSequence.isRunning || motor.motionSequence.speed == 0) return;
-  if (!motor.stepper.continuous && motor.stepper.remainingSteps == 0) {
-    stop(motor);
-    return;
-  }
-
-  unsigned long stepsPerSec = (unsigned long)motor.motionSequence.speed * STEPPER_MAX_STEPS_PER_SEC / 255;
-  if (stepsPerSec == 0) stepsPerSec = 1;
-  unsigned long intervalUs = 1000000UL / stepsPerSec;
-
-  unsigned long now = micros();
-  if (now - motor.stepper.lastStepUs < intervalUs) return;
-  motor.stepper.lastStepUs += intervalUs;
-
-  // Liigume tabelis ühe faasi edasi (või tagasi) ja anname poolidele uue oleku
-  motor.stepper.phase = (motor.stepper.phase + (motor.stepper.clockwise ? 1 : 7)) & 7;
-  writeCoils(motor, HALF_STEP_SEQUENCE[motor.stepper.phase]);
-  motor.stepper.position += motor.stepper.clockwise ? 1 : -1;
-
-  if (!motor.stepper.continuous) {
-    motor.stepper.remainingSteps--;
-    if (motor.stepper.remainingSteps == 0) {
-      stop(motor);
-    }
-  }
+  motor.update(motor);
 }

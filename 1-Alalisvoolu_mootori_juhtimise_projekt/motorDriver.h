@@ -40,8 +40,7 @@ struct stepperConfig {
   uint8_t coilPins[4];         // ULN2003 sisendviigud IN1..IN4
   uint8_t phase;               // Praegune faas poolsammu tabelis (0-7)
   bool clockwise;              // Pöörlemissuund
-  uint32_t remainingSteps;     // Mitu sammu on veel teha (0 = pidev pöörlemine, kui isRunning)
-  bool continuous;             // true: pöörleb pidevalt, kuni 'stop'; false: teeb 'remainingSteps' sammu
+  uint32_t remainingSteps;     // Mitu sammu on veel teha (0 = pöörleb pidevalt, kuni 'stop')
   unsigned long lastStepUs;    // Viimase sammu aeg (micros), mitteblokeerivaks ajastamiseks
   int32_t position;            // Positsioon sammudes (+1 päripäeva, -1 vastupäeva, poolsammudes)
 };
@@ -51,6 +50,11 @@ struct motorFactory {
   enum motorType type;
   struct motionSequencer motionSequence;
   struct stepperConfig stepper; // Kasutusel ainult type == MOTOR_STEPPER korral
+
+  // Mootoritüübile omane käitumine; init-funktsioon paneb paika õiged funktsioonid,
+  // nii et start/stop/setSpeed/updateMotor ei pea tüüpi kontrollima.
+  void (*apply)(struct motorFactory &motor);   // Kirjutab mootori oleku väljunditesse
+  void (*update)(struct motorFactory &motor);  // Tehakse loop()-is (nt samm-mootori sammud)
 
   // Seadistamine: motor.initDC(pin) või motor.initStepper(in1, in2, in3, in4)
   void initDC(uint8_t pwmPin);
