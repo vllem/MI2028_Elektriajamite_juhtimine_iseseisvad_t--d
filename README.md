@@ -1,7 +1,9 @@
-# Kõik iseseisvad praktilised tööd Eesti Maaülikooli õppeaines MI.2028 Elektriajamite juhtimine
+# MI.2028 Elektriajamite juhtimine kursusetöö
 
-Sisukord
-1. [Alalisvoolu mootori juhtimise projekt](1-Alalisvoolu_mootori_juhtimise_projekt)
-2. [Elektriajami elektrilise juhtimis- ja rakenduskihi projekt](2-Elektriajami_elektrilise_juhtimis-_ja_rakenduskihi_projekt)
-3. [Tagasiside ahelaga mootori juhtimise projekt](3-Tagasiside_ahelaga_mootori_juhtimise_projekt)
-4. [Elektriliste ja tarkvaraliste ohutusahelate projekt](4-Elektriliste_ja_tarkvaraliste_ohutusahelate_projekt)
+Tegin repo veidi ümber ning nüüd pole repos mitut kausta. Tundus veidi mõtetu hoida alles mitut kausta kui ma tegelen tegelikult kogu kursus ühe ja sama koodi parandamise/edastamisega.
+
+- `main/main.ino` on peamine fail.
+
+- `main/motorDriver.h` ja `main/motorDriver.cpp` tegelevad mootorite juhtimisega.
+
+- `main/userInterface.h` ja `main/userInterface.cpp` tegelevad kasutajaliidesega.

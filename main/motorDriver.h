@@ -82,4 +82,22 @@ void moveSteps(struct motorFactory &motor, uint32_t steps);
 void moveAngle(struct motorFactory &motor, int32_t degrees);  // positiivne = päripäeva, negatiivne = vastupäeva
 void updateMotor(struct motorFactory &motor);
 
+/*
+  MOTOR_APP genereerib setup()- ja loop()-funktsioonid, nii et kasutaja .ino failis neid kirjutama ei pea.
+  Kasutus: MOTOR_APP(motor, initStepper(8, 9, 10, 11)) või MOTOR_APP(motor, initDC(3))
+  Vajab, et userInterface.h oleks enne makro kasutamist kaasatud (pollSerial).
+*/
+#define MOTOR_APP(m, initCall)                                          \
+  struct motorFactory m;                                                \
+  void setup() {                                                        \
+    Serial.begin(9600);                                                 \
+    m.initCall;                                                         \
+    stop(m);                                                            \
+    Serial.println("Ready. Type 'help' to see available commands.");    \
+  }                                                                     \
+  void loop() {                                                         \
+    pollSerial(m);                                                      \
+    updateMotor(m);                                                     \
+  }
+
 #endif // MOTOR_H
