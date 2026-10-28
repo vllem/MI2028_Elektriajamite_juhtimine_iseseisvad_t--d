@@ -41,11 +41,15 @@ class Motor {
 public:
   virtual ~Motor() {}
 
-  // Kutsutakse setup()-is: seadistab viigud ja paneb mootori peatatud algseisu.
-  virtual void begin() = 0;
+  // Kutsutakse setup()-is ja paneb mootori peatatud algseisu. Alamklass seadistab enne oma viigud ja kutsub Motor::begin().
+  virtual void begin() {
+    running = false;
+    speed = 0;
+    apply();
+  }
 
-  // Tehakse loop()-is võimalikult tihti (nt samm-mootori sammud), ei blokeeri.
-  virtual void update() = 0;
+  // Tehakse loop()-is võimalikult tihti (nt samm-mootori sammud), ei blokeeri. Vaikimisi ei tee midagi.
+  virtual void update() {}
 
   // Samm-mootori puhul 'this', muidu nullptr.
   virtual StepperMotor *asStepper() { return nullptr; }
@@ -80,7 +84,6 @@ public:
   explicit DCMotor(uint8_t pwmPin) : pin(pwmPin) {}
 
   void begin() override;
-  void update() override {}  // DC-mootor ei vaja update'i
 
 protected:
   void apply() override;
@@ -135,7 +138,6 @@ public:
   explicit ServoMotor(uint8_t signalPin) : pin(signalPin) {}
 
   void begin() override;
-  void update() override {}  // Servo teeb liikumise ise, update'i pole vaja
   ServoMotor *asServo() override { return this; }
 
   void setAngle(uint8_t degrees);  // Üle SERVO_MAX_ANGLE väärtused piiratakse
@@ -175,10 +177,8 @@ void Motor::setSpeed(uint8_t newSpeed) {
 */
 
 void DCMotor::begin() {
-  running = false;
-  speed = 0;
   pinMode(pin, OUTPUT);
-  apply();
+  Motor::begin();
 }
 
 void DCMotor::apply() {
@@ -205,18 +205,15 @@ void StepperMotor::writeCoils(uint8_t pattern) {
 */
 
 void StepperMotor::begin() {
-  running = false;
-  speed = 0;
   phase = 0;
   clockwise = true;
-  remainingSteps = 0;
   lastStepUs = 0;
   position = 0;
 
   for (uint8_t i = 0; i < 4; i++) {
     pinMode(coilPins[i], OUTPUT);
   }
-  writeCoils(0);
+  Motor::begin();  // apply() lülitab poolid välja ja tühistab pooleli olnud liikumise
 }
 
 /*
@@ -293,10 +290,8 @@ void StepperMotor::moveAngle(int32_t degrees) {
 */
 
 void ServoMotor::begin() {
-  running = false;
-  speed = 0;
   angle = SERVO_DEFAULT_ANGLE;
-  apply();
+  Motor::begin();
 }
 
 /*
