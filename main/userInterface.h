@@ -24,6 +24,7 @@
 
   Kasutus:
     start                  - käsk läheb valitud mootorile (esimesena lisatud mootor on vaikimisi valitud)
+    stopall                - peata kõik registreeritud mootorid korraga
     use <mootor>           - vali, millist mootorit käsud edaspidi juhivad
     <mootor> <käsk> [arg]  - käsk ühele kindlale mootorile ilma valikut muutmata, nt 'dc speed 200'
     list                   - näita registreeritud mootoreid
@@ -69,6 +70,7 @@ private:
 
   bool cmdStart(Motor &motor, const String &arg);
   bool cmdStop(Motor &motor, const String &arg);
+  bool cmdStopAll(Motor &motor, const String &arg);
   bool cmdSpeed(Motor &motor, const String &arg);
   bool cmdDir(Motor &motor, const String &arg);
   bool cmdSteps(Motor &motor, const String &arg);
@@ -99,6 +101,7 @@ private:
 const CommandInterpreter::Command CommandInterpreter::commands[] = {
   { "start", &CommandInterpreter::cmdStart, ANY,            "start",           "Start the motor" },
   { "stop",  &CommandInterpreter::cmdStop,  ANY,            "stop",            "Stop the motor" },
+  { "stopall", &CommandInterpreter::cmdStopAll, ANY,        "stopall",         "Stop all motors at once" },
   { "speed", &CommandInterpreter::cmdSpeed, DC | STEPPER,   "speed <0-255>",   "Set the speed, or just enter a number (not for servo)" },
   { "dir",   &CommandInterpreter::cmdDir,   STEPPER,        "dir <cw|ccw>",    "Set stepper direction (stepper only)" },
   { "steps", &CommandInterpreter::cmdSteps, STEPPER,        "steps <1-65535>", "Move a number of steps, then stop (stepper only)" },
@@ -124,6 +127,15 @@ bool CommandInterpreter::cmdStart(Motor &motor, const String &arg) {
 bool CommandInterpreter::cmdStop(Motor &motor, const String &arg) {
   motor.stop();
   Serial.println(F("Motor stopped."));
+  return true;
+}
+
+// Peatab kõik registreeritud mootorid, mitte ainult valitud mootori
+bool CommandInterpreter::cmdStopAll(Motor &motor, const String &arg) {
+  for (uint8_t i = 0; i < motorCount; i++) {
+    motors[i].motor->stop();
+  }
+  Serial.println(F("All motors stopped."));
   return true;
 }
 
