@@ -23,7 +23,7 @@ ServoMotor servo(5);                 // Servo: signaal = pin 5
 CommandInterpreter ui;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   stepper.begin();
   dc.begin();
