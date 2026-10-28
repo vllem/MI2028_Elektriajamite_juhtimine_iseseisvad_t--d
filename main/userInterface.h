@@ -19,64 +19,96 @@
 */
 
 /*
-  'commandHandler' on viit funktsioonile, mis võtab mootori ja käsu argumendi.
-  Kõik käsufunktsioonid peavad olema sellise kujuga, et neid saaks hoida
-  ühes tabelis ja välja kutsuda ühtemoodi.
+  CommandInterpreter juhib ühte või mitut mootorit Serial-i käskudega.
+  Mootorid registreeritakse nimega (add), nii et nende arv pole piiratud makroga ega ühe globaalse objektiga.
+
+  Kasutus:
+    start                  - käsk läheb valitud mootorile (esimesena lisatud mootor on vaikimisi valitud)
+    use <mootor>           - vali, millist mootorit käsud edaspidi juhivad
+    <mootor> <käsk> [arg]  - käsk ühele kindlale mootorile ilma valikut muutmata, nt 'dc speed 200'
+    list                   - näita registreeritud mootoreid
 */
+class CommandInterpreter {
+public:
+  static const uint8_t MAX_MOTORS = 4;
 
-typedef void (*commandHandler)(struct motorFactory &motor, const String &arg);
+  // Registreerib mootori nimega; false, kui nimi on kasutusel või ruum on täis.
+  // Nime string peab elama programmi lõpuni (nt sõnaliteraal).
+  bool add(const char *name, Motor &motor);
 
+  // handle võtab sisendrea (nt "speed 150" või "dc speed 150") ja käivitab vastava käsu.
+  void handle(String input);
 
-//  Struct 'command' paneb paika käskude struktuuri.
-struct command {
-  const char *name;         // Käsunimetus
-  commandHandler handler;   // Funktsioon, mis täidab käsu
-  const char *usage;        // Kuidas kasutada käsku
-  const char *description;  // Käsu enda kirjeldus
+  // poll loeb Serial-ist saadaolevad baidid ilma blokeerimata ning
+  // käivitab handle'i, kui terve rida (lõpuga '\n') on kokku kogutud.
+  void poll();
+
+private:
+  typedef void (CommandInterpreter::*Handler)(Motor &motor, const String &arg);
+
+  //  Struct 'Command' paneb paika käskude struktuuri.
+  struct Command {
+    const char *name;         // Käsunimetus
+    Handler handler;          // Meetod, mis täidab käsu
+    const char *usage;        // Kuidas kasutada käsku
+    const char *description;  // Käsu enda kirjeldus
+  };
+
+  struct Entry {
+    const char *name;
+    Motor *motor;
+  };
+
+  static const Command commands[];
+  static const size_t COMMAND_COUNT;
+
+  void cmdStart(Motor &motor, const String &arg);
+  void cmdStop(Motor &motor, const String &arg);
+  void cmdSpeed(Motor &motor, const String &arg);
+  void cmdDir(Motor &motor, const String &arg);
+  void cmdSteps(Motor &motor, const String &arg);
+  void cmdAngle(Motor &motor, const String &arg);
+  void cmdUse(Motor &motor, const String &arg);
+  void cmdList(Motor &motor, const String &arg);
+  void cmdHelp(Motor &motor, const String &arg);
+
+  static bool isNumeric(const String &s, unsigned int maxLen = 3);
+  Entry *find(const String &name);
+  void execute(const String &name, const String &arg, Motor *target);
+
+  Entry motors[MAX_MOTORS];
+  uint8_t motorCount = 0;
+  uint8_t selected = 0;
+  String inputLine;
 };
-
-// handleCommand võtab sisendrea (nt "speed 150") ja käivitab vastava käsu.
-void handleCommand(struct motorFactory &motor, String input);
-
-// pollSerial loeb Serial-ist saadaolevad baidid ilma blokeerimata ning
-// käivitab handleCommand'i, kui terve rida (lõpuga '\n') on kokku kogutud.
-void pollSerial(struct motorFactory &motor);
 
 #ifdef USERINTERFACE_IMPLEMENTATION
 
-// Käsufunktsioonide eeldeklaratsioonid, et neid saaks kasutada tabelis enne nende definitsiooni
-static void cmdStart(struct motorFactory &motor, const String &arg);
-static void cmdStop(struct motorFactory &motor, const String &arg);
-static void cmdSpeed(struct motorFactory &motor, const String &arg);
-static void cmdDir(struct motorFactory &motor, const String &arg);
-static void cmdSteps(struct motorFactory &motor, const String &arg);
-static void cmdAngle(struct motorFactory &motor, const String &arg);
-static void cmdHelp(struct motorFactory &motor, const String &arg);
-
-
 // Kõik olemasolevad käsud massiivis (ehk arrays)
-static const struct command commands[] = {
-  { "start", cmdStart, "start",         "Start the motor" },
-  { "stop",  cmdStop,  "stop",          "Stop the motor" },
-  { "speed", cmdSpeed, "speed <0-255>", "Set the speed (or just enter a number)" },
-  { "dir",   cmdDir,   "dir <cw|ccw>",  "Set stepper direction (stepper only)" },
-  { "steps", cmdSteps, "steps <1-65535>", "Move a number of steps, then stop (stepper only)" },
-  { "angle", cmdAngle, "angle <degrees>", "Turn by an angle, negative = counter-clockwise (stepper only)" },
-  { "help",  cmdHelp,  "help",          "Show all commands" },
+const CommandInterpreter::Command CommandInterpreter::commands[] = {
+  { "start", &CommandInterpreter::cmdStart, "start",         "Start the motor" },
+  { "stop",  &CommandInterpreter::cmdStop,  "stop",          "Stop the motor" },
+  { "speed", &CommandInterpreter::cmdSpeed, "speed <0-255>", "Set the speed (or just enter a number)" },
+  { "dir",   &CommandInterpreter::cmdDir,   "dir <cw|ccw>",  "Set stepper direction (stepper only)" },
+  { "steps", &CommandInterpreter::cmdSteps, "steps <1-65535>", "Move a number of steps, then stop (stepper only)" },
+  { "angle", &CommandInterpreter::cmdAngle, "angle <degrees>", "Turn by an angle, negative = counter-clockwise (stepper only)" },
+  { "use",   &CommandInterpreter::cmdUse,   "use <motor>",   "Select the motor that the commands control" },
+  { "list",  &CommandInterpreter::cmdList,  "list",          "Show all motors" },
+  { "help",  &CommandInterpreter::cmdHelp,  "help",          "Show all commands" },
 };
 
-static const size_t COMMAND_COUNT = sizeof(commands) / sizeof(commands[0]);
+const size_t CommandInterpreter::COMMAND_COUNT = sizeof(commands) / sizeof(commands[0]);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void cmdStart(struct motorFactory &motor, const String &arg) {
-  start(motor);
+void CommandInterpreter::cmdStart(Motor &motor, const String &arg) {
+  motor.start();
   Serial.print("Motor started at speed: ");
-  Serial.println(motor.motionSequence.speed);
+  Serial.println(motor.getSpeed());
 }
 
-static void cmdStop(struct motorFactory &motor, const String &arg) {
-  stop(motor);
+void CommandInterpreter::cmdStop(Motor &motor, const String &arg) {
+  motor.stop();
   Serial.println("Motor stopped.");
 }
 
@@ -86,7 +118,7 @@ static void cmdStop(struct motorFactory &motor, const String &arg) {
   "99999999999", mis lõppeks täisarvu ületäituvusega (integer overflow).
 */
 
-static bool isNumeric(const String &s, unsigned int maxLen = 3) {
+bool CommandInterpreter::isNumeric(const String &s, unsigned int maxLen) {
   if (s.length() == 0 || s.length() > maxLen) return false;
   for (unsigned int i = 0; i < s.length(); i++) {
     if (!isDigit(s[i])) return false;
@@ -94,7 +126,7 @@ static bool isNumeric(const String &s, unsigned int maxLen = 3) {
   return true;
 }
 
-static void cmdSpeed(struct motorFactory &motor, const String &arg) {
+void CommandInterpreter::cmdSpeed(Motor &motor, const String &arg) {
   if (!isNumeric(arg)) {
     Serial.println("Error: Use 'speed <0-255>', e.g. 'speed 150'.");
     return;
@@ -104,33 +136,35 @@ static void cmdSpeed(struct motorFactory &motor, const String &arg) {
     Serial.println("Error: Speed must be between 0 and 255!");
     return;
   }
-  setSpeed(motor, (uint8_t)val);
-  if (motor.motionSequence.isRunning) {
+  motor.setSpeed((uint8_t)val);
+  if (motor.isRunning()) {
     Serial.print("Speed changed: ");
   } else {
     Serial.print("Speed saved (motor is stopped, enter 'start'): ");
   }
-  Serial.println(motor.motionSequence.speed);
+  Serial.println(motor.getSpeed());
 }
 
-static void cmdDir(struct motorFactory &motor, const String &arg) {
-  if (motor.type != MOTOR_STEPPER) {
+void CommandInterpreter::cmdDir(Motor &motor, const String &arg) {
+  StepperMotor *stepper = motor.asStepper();
+  if (!stepper) {
     Serial.println("Error: 'dir' works only with a stepper motor.");
     return;
   }
   if (arg.equalsIgnoreCase("cw")) {
-    setDirection(motor, true);
+    stepper->setDirection(true);
     Serial.println("Direction: clockwise.");
   } else if (arg.equalsIgnoreCase("ccw")) {
-    setDirection(motor, false);
+    stepper->setDirection(false);
     Serial.println("Direction: counter-clockwise.");
   } else {
     Serial.println("Error: Use 'dir cw' or 'dir ccw'.");
   }
 }
 
-static void cmdSteps(struct motorFactory &motor, const String &arg) {
-  if (motor.type != MOTOR_STEPPER) {
+void CommandInterpreter::cmdSteps(Motor &motor, const String &arg) {
+  StepperMotor *stepper = motor.asStepper();
+  if (!stepper) {
     Serial.println("Error: 'steps' works only with a stepper motor.");
     return;
   }
@@ -138,16 +172,17 @@ static void cmdSteps(struct motorFactory &motor, const String &arg) {
     Serial.println("Error: Use 'steps <1-65535>', e.g. 'steps 200'.");
     return;
   }
-  if (motor.motionSequence.speed == 0) {
+  if (motor.getSpeed() == 0) {
     Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
   }
-  moveSteps(motor, (uint32_t)arg.toInt());
+  stepper->moveSteps((uint32_t)arg.toInt());
   Serial.print("Moving steps: ");
   Serial.println(arg);
 }
 
-static void cmdAngle(struct motorFactory &motor, const String &arg) {
-  if (motor.type != MOTOR_STEPPER) {
+void CommandInterpreter::cmdAngle(Motor &motor, const String &arg) {
+  StepperMotor *stepper = motor.asStepper();
+  if (!stepper) {
     Serial.println("Error: 'angle' works only with a stepper motor.");
     return;
   }
@@ -157,16 +192,16 @@ static void cmdAngle(struct motorFactory &motor, const String &arg) {
     Serial.println("Error: Use 'angle <degrees>', e.g. 'angle 180' or 'angle -90'.");
     return;
   }
-  if (motor.motionSequence.speed == 0) {
+  if (motor.getSpeed() == 0) {
     Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
   }
   long deg = digits.toInt();
-  moveAngle(motor, negative ? -deg : deg);
+  stepper->moveAngle(negative ? -deg : deg);
   Serial.print("Turning degrees: ");
   Serial.println(negative ? -deg : deg);
 }
 
-static void cmdHelp(struct motorFactory &motor, const String &arg) {
+void CommandInterpreter::cmdHelp(Motor &motor, const String &arg) {
   Serial.println("Commands:");
   for (size_t i = 0; i < COMMAND_COUNT; i++) {
     Serial.print("  ");
@@ -176,42 +211,105 @@ static void cmdHelp(struct motorFactory &motor, const String &arg) {
   }
 }
 
-void handleCommand(struct motorFactory &motor, String input) {
+void CommandInterpreter::cmdUse(Motor &motor, const String &arg) {
+  Entry *entry = find(arg);
+  if (!entry) {
+    Serial.println("Error: Unknown motor. Type 'list' to see motors.");
+    return;
+  }
+  selected = entry - motors;
+  Serial.print("Selected motor: ");
+  Serial.println(entry->name);
+}
+
+void CommandInterpreter::cmdList(Motor &motor, const String &arg) {
+  Serial.println("Motors:");
+  for (uint8_t i = 0; i < motorCount; i++) {
+    Serial.print(i == selected ? "* " : "  ");
+    Serial.print(motors[i].name);
+    Serial.print(motors[i].motor->asStepper() ? " (stepper)" : " (DC)");
+    Serial.print(motors[i].motor->isRunning() ? ", running, speed " : ", stopped, speed ");
+    Serial.println(motors[i].motor->getSpeed());
+  }
+}
+
+bool CommandInterpreter::add(const char *name, Motor &motor) {
+  if (motorCount >= MAX_MOTORS || find(name)) return false;
+  motors[motorCount++] = { name, &motor };
+  return true;
+}
+
+CommandInterpreter::Entry *CommandInterpreter::find(const String &name) {
+  for (uint8_t i = 0; i < motorCount; i++) {
+    if (name.equalsIgnoreCase(motors[i].name)) return &motors[i];
+  }
+  return nullptr;
+}
+
+// Otsib käsu nime järgi ja täidab selle 'target' mootoril (nullptr = valitud mootor).
+void CommandInterpreter::execute(const String &name, const String &arg, Motor *target) {
+  for (size_t i = 0; i < COMMAND_COUNT; i++) {
+    if (name.equalsIgnoreCase(commands[i].name)) {
+      if (!target && motorCount == 0) {
+        // Käsufunktsioonid vajavad mootori viidet, seega ilma mootorita käske ei täideta
+        Serial.println("Error: No motors registered.");
+        return;
+      }
+      (this->*commands[i].handler)(target ? *target : *motors[selected].motor, arg);
+      return;
+    }
+  }
+  Serial.println("Unknown command! Type 'help' to see available commands.");
+}
+
+void CommandInterpreter::handle(String input) {
   input.trim();
   if (input.length() == 0) return;
 
   if (isDigit(input[0])) {
-    cmdSpeed(motor, input);
+    execute("speed", input, nullptr);
     return;
   }
 
-  String name, arg;
+  // Sisendrida jagatakse sõnadeks: [mootor] käsk [argument]
+  String first, rest;
   int space = input.indexOf(' ');
   if (space < 0) {
-    name = input;
+    first = input;
   } else {
-    name = input.substring(0, space);
-    arg = input.substring(space + 1);
+    first = input.substring(0, space);
+    rest = input.substring(space + 1);
+    rest.trim();
+  }
+
+  Entry *entry = find(first);
+  if (!entry) {
+    execute(first, rest, nullptr);
+    return;
+  }
+
+  // Esimene sõna oli mootori nimi: järgmine sõna on käsk
+  String name, arg;
+  space = rest.indexOf(' ');
+  if (space < 0) {
+    name = rest;
+  } else {
+    name = rest.substring(0, space);
+    arg = rest.substring(space + 1);
     arg.trim();
   }
-
-  for (size_t i = 0; i < COMMAND_COUNT; i++) {
-    if (name.equalsIgnoreCase(commands[i].name)) {
-      commands[i].handler(motor, arg);
-      return;
-    }
+  if (name.length() == 0) {
+    Serial.println("Error: Use '<motor> <command>', e.g. 'dc speed 200'.");
+    return;
   }
-
-  Serial.println("Unknown command! Type 'help' to see available commands.");
+  execute(name, arg, entry->motor);
 }
 
-void pollSerial(struct motorFactory &motor) {
-  static String inputLine;
-
+void CommandInterpreter::poll() {
   while (Serial.available() > 0) {
     char c = Serial.read();
     if (c == '\n') {
-      handleCommand(motor, inputLine);
+      handle(inputLine);
       inputLine = "";
     } else if (c != '\r') {
       inputLine += c;

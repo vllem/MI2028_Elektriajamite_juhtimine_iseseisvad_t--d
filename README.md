@@ -4,6 +4,6 @@ Tegin repo veidi ümber ning nüüd pole repos mitut kausta. Tundus veidi mõtet
 
 - `main/main.ino` on peamine fail.
 
-- `main/motorDriver.h` ja `main/motorDriver.cpp` tegelevad mootorite juhtimisega.
+- `main/motorDriver.h`  tegelevad mootorite juhtimisega.
 
-- `main/userInterface.h` ja `main/userInterface.cpp` tegelevad kasutajaliidesega.
+- `main/userInterface.h` tegelevad kasutajaliidesega.
