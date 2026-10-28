@@ -12,6 +12,7 @@
 #define MOTOR_H
 
 #include <Arduino.h>
+#include <Servo.h>
 
 /*
   Single-header teek (stb-stiilis, https://github.com/nothings/stb): teostuse saamiseks defineeri täpselt ühes failis enne selle faili kaasamist
@@ -24,12 +25,17 @@
 // Poolsamme täispöörde kohta (28BYJ-48: 2 * 2037.9 ≈ 4076). Muuda, kui mootor on teistsugune.
 #define STEPPER_STEPS_PER_REV 4076
 
+// Servo suurim lubatud nurk kraadides ning nurk, kuhu servo esimesel käivitamisel liigub
+#define SERVO_MAX_ANGLE 180
+#define SERVO_DEFAULT_ANGLE 90
+
 class StepperMotor;
+class ServoMotor;
 
 /*
-  Motor on abstraktne baasklass: kõik mootoritüübid (DC, samm-mootor) pärivad sellest.
+  Motor on abstraktne baasklass: kõik mootoritüübid (DC, samm-mootor, servo) pärivad sellest.
   Alamklassid realiseerivad apply() ja update(), nii et start/stop/setSpeed ei pea tüüpi kontrollima.
-  Samm-mootori lisavõimalustele pääseb ligi asStepper() kaudu (RTTI-t Arduinos pole).
+  Samm-mootori ja servo lisavõimalustele pääseb ligi asStepper() ja asServo() kaudu (RTTI-t Arduinos pole).
 */
 class Motor {
 public:
@@ -43,6 +49,9 @@ public:
 
   // Samm-mootori puhul 'this', muidu nullptr.
   virtual StepperMotor *asStepper() { return nullptr; }
+
+  // Servo puhul 'this', muidu nullptr.
+  virtual ServoMotor *asServo() { return nullptr; }
 
   /*
     'start' käivitab mootori alati kiirusel 0, et vältida olukorda, kus mootor
@@ -114,6 +123,31 @@ private:
   uint32_t remainingSteps = 0;      // Mitu sammu on veel teha (0 = pöörleb pidevalt, kuni 'stop')
   unsigned long lastStepUs = 0;     // Viimase sammu aeg (micros), mitteblokeerivaks ajastamiseks
   int32_t position = 0;
+};
+
+/*
+  Servo (nt SG90), juhitud Arduino Servo teegiga. Servo ei pöörle, vaid liigub kindlale nurgale (0-SERVO_MAX_ANGLE),
+  seega 'speed' siin tähendust ei oma. setAngle salvestab nurga; servo liigub sinna, kui see on käivitatud.
+  stop() lõpetab servole impulsside saatmise (servo ei hoia enam asendit), start() liigub salvestatud nurgale tagasi.
+*/
+class ServoMotor : public Motor {
+public:
+  explicit ServoMotor(uint8_t signalPin) : pin(signalPin) {}
+
+  void begin() override;
+  void update() override {}  // Servo teeb liikumise ise, update'i pole vaja
+  ServoMotor *asServo() override { return this; }
+
+  void setAngle(uint8_t degrees);  // Üle SERVO_MAX_ANGLE väärtused piiratakse
+  uint8_t getAngle() const { return angle; }
+
+protected:
+  void apply() override;
+
+private:
+  uint8_t pin;
+  uint8_t angle = SERVO_DEFAULT_ANGLE;
+  Servo servo;
 };
 
 #ifdef MOTORDRIVER_IMPLEMENTATION
@@ -251,6 +285,36 @@ void StepperMotor::moveAngle(int32_t degrees) {
   uint32_t absDeg = degrees < 0 ? -degrees : degrees;
   setDirection(degrees > 0);
   moveSteps(((uint64_t)absDeg * STEPPER_STEPS_PER_REV + 180) / 360);
+}
+
+/*
+  ServoMotor::begin paneb servo peatatud algseisu. Servot ei seota (attach) enne 'start'i,
+  et see ei hüppaks käivitamisel ootamatult mingile asendile.
+*/
+
+void ServoMotor::begin() {
+  running = false;
+  speed = 0;
+  angle = SERVO_DEFAULT_ANGLE;
+  apply();
+}
+
+/*
+  apply seob servo viiguga (ja liigutab salvestatud nurgale) või vabastab selle, olenevalt sellest, kas servo on käivitatud.
+*/
+
+void ServoMotor::apply() {
+  if (running) {
+    if (!servo.attached()) servo.attach(pin);
+    servo.write(angle);
+  } else if (servo.attached()) {
+    servo.detach();
+  }
+}
+
+void ServoMotor::setAngle(uint8_t degrees) {
+  angle = degrees > SERVO_MAX_ANGLE ? SERVO_MAX_ANGLE : degrees;
+  apply();
 }
 
 #endif // MOTORDRIVER_IMPLEMENTATION

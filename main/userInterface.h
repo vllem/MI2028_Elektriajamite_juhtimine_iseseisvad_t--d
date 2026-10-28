@@ -68,6 +68,7 @@ private:
   void cmdDir(Motor &motor, const String &arg);
   void cmdSteps(Motor &motor, const String &arg);
   void cmdAngle(Motor &motor, const String &arg);
+  void cmdPos(Motor &motor, const String &arg);
   void cmdUse(Motor &motor, const String &arg);
   void cmdList(Motor &motor, const String &arg);
   void cmdHelp(Motor &motor, const String &arg);
@@ -92,6 +93,7 @@ const CommandInterpreter::Command CommandInterpreter::commands[] = {
   { "dir",   &CommandInterpreter::cmdDir,   "dir <cw|ccw>",  "Set stepper direction (stepper only)" },
   { "steps", &CommandInterpreter::cmdSteps, "steps <1-65535>", "Move a number of steps, then stop (stepper only)" },
   { "angle", &CommandInterpreter::cmdAngle, "angle <degrees>", "Turn by an angle, negative = counter-clockwise (stepper only)" },
+  { "pos",   &CommandInterpreter::cmdPos,   "pos <0-180>",   "Move to an angle in degrees (servo only)" },
   { "use",   &CommandInterpreter::cmdUse,   "use <motor>",   "Select the motor that the commands control" },
   { "list",  &CommandInterpreter::cmdList,  "list",          "Show all motors" },
   { "help",  &CommandInterpreter::cmdHelp,  "help",          "Show all commands" },
@@ -103,13 +105,18 @@ const size_t CommandInterpreter::COMMAND_COUNT = sizeof(commands) / sizeof(comma
 
 void CommandInterpreter::cmdStart(Motor &motor, const String &arg) {
   motor.start();
-  Serial.print("Motor started at speed: ");
+  if (ServoMotor *servo = motor.asServo()) {
+    Serial.print(F("Servo started at angle: "));
+    Serial.println(servo->getAngle());
+    return;
+  }
+  Serial.print(F("Motor started at speed: "));
   Serial.println(motor.getSpeed());
 }
 
 void CommandInterpreter::cmdStop(Motor &motor, const String &arg) {
   motor.stop();
-  Serial.println("Motor stopped.");
+  Serial.println(F("Motor stopped."));
 }
 
 /*
@@ -127,20 +134,24 @@ bool CommandInterpreter::isNumeric(const String &s, unsigned int maxLen) {
 }
 
 void CommandInterpreter::cmdSpeed(Motor &motor, const String &arg) {
+  if (motor.asServo()) {
+    Serial.println(F("Error: A servo has no speed. Use 'pos <0-180>' to set its angle."));
+    return;
+  }
   if (!isNumeric(arg)) {
-    Serial.println("Error: Use 'speed <0-255>', e.g. 'speed 150'.");
+    Serial.println(F("Error: Use 'speed <0-255>', e.g. 'speed 150'."));
     return;
   }
   int val = arg.toInt();
   if (val > 255) {
-    Serial.println("Error: Speed must be between 0 and 255!");
+    Serial.println(F("Error: Speed must be between 0 and 255!"));
     return;
   }
   motor.setSpeed((uint8_t)val);
   if (motor.isRunning()) {
-    Serial.print("Speed changed: ");
+    Serial.print(F("Speed changed: "));
   } else {
-    Serial.print("Speed saved (motor is stopped, enter 'start'): ");
+    Serial.print(F("Speed saved (motor is stopped, enter 'start'): "));
   }
   Serial.println(motor.getSpeed());
 }
@@ -148,65 +159,84 @@ void CommandInterpreter::cmdSpeed(Motor &motor, const String &arg) {
 void CommandInterpreter::cmdDir(Motor &motor, const String &arg) {
   StepperMotor *stepper = motor.asStepper();
   if (!stepper) {
-    Serial.println("Error: 'dir' works only with a stepper motor.");
+    Serial.println(F("Error: 'dir' works only with a stepper motor."));
     return;
   }
   if (arg.equalsIgnoreCase("cw")) {
     stepper->setDirection(true);
-    Serial.println("Direction: clockwise.");
+    Serial.println(F("Direction: clockwise."));
   } else if (arg.equalsIgnoreCase("ccw")) {
     stepper->setDirection(false);
-    Serial.println("Direction: counter-clockwise.");
+    Serial.println(F("Direction: counter-clockwise."));
   } else {
-    Serial.println("Error: Use 'dir cw' or 'dir ccw'.");
+    Serial.println(F("Error: Use 'dir cw' or 'dir ccw'."));
   }
 }
 
 void CommandInterpreter::cmdSteps(Motor &motor, const String &arg) {
   StepperMotor *stepper = motor.asStepper();
   if (!stepper) {
-    Serial.println("Error: 'steps' works only with a stepper motor.");
+    Serial.println(F("Error: 'steps' works only with a stepper motor."));
     return;
   }
   if (!isNumeric(arg, 5) || arg.toInt() < 1 || arg.toInt() > 65535L) {
-    Serial.println("Error: Use 'steps <1-65535>', e.g. 'steps 200'.");
+    Serial.println(F("Error: Use 'steps <1-65535>', e.g. 'steps 200'."));
     return;
   }
   if (motor.getSpeed() == 0) {
-    Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
+    Serial.println(F("Warning: speed is 0, set it with 'speed' for the motor to move."));
   }
   stepper->moveSteps((uint32_t)arg.toInt());
-  Serial.print("Moving steps: ");
+  Serial.print(F("Moving steps: "));
   Serial.println(arg);
 }
 
 void CommandInterpreter::cmdAngle(Motor &motor, const String &arg) {
   StepperMotor *stepper = motor.asStepper();
   if (!stepper) {
-    Serial.println("Error: 'angle' works only with a stepper motor.");
+    Serial.println(F("Error: 'angle' works only with a stepper motor."));
     return;
   }
   bool negative = arg.length() > 0 && arg[0] == '-';
   String digits = negative ? arg.substring(1) : arg;
   if (!isNumeric(digits, 4) || digits.toInt() == 0) {
-    Serial.println("Error: Use 'angle <degrees>', e.g. 'angle 180' or 'angle -90'.");
+    Serial.println(F("Error: Use 'angle <degrees>', e.g. 'angle 180' or 'angle -90'."));
     return;
   }
   if (motor.getSpeed() == 0) {
-    Serial.println("Warning: speed is 0, set it with 'speed' for the motor to move.");
+    Serial.println(F("Warning: speed is 0, set it with 'speed' for the motor to move."));
   }
   long deg = digits.toInt();
   stepper->moveAngle(negative ? -deg : deg);
-  Serial.print("Turning degrees: ");
+  Serial.print(F("Turning degrees: "));
   Serial.println(negative ? -deg : deg);
 }
 
+void CommandInterpreter::cmdPos(Motor &motor, const String &arg) {
+  ServoMotor *servo = motor.asServo();
+  if (!servo) {
+    Serial.println(F("Error: 'pos' works only with a servo."));
+    return;
+  }
+  if (!isNumeric(arg) || arg.toInt() > SERVO_MAX_ANGLE) {
+    Serial.println(F("Error: Use 'pos <0-180>', e.g. 'pos 90'."));
+    return;
+  }
+  servo->setAngle((uint8_t)arg.toInt());
+  if (servo->isRunning()) {
+    Serial.print(F("Moving to angle: "));
+  } else {
+    Serial.print(F("Angle saved (servo is stopped, enter 'start'): "));
+  }
+  Serial.println(servo->getAngle());
+}
+
 void CommandInterpreter::cmdHelp(Motor &motor, const String &arg) {
-  Serial.println("Commands:");
+  Serial.println(F("Commands:"));
   for (size_t i = 0; i < COMMAND_COUNT; i++) {
-    Serial.print("  ");
+    Serial.print(F("  "));
     Serial.print(commands[i].usage);
-    Serial.print(" - ");
+    Serial.print(F(" - "));
     Serial.println(commands[i].description);
   }
 }
@@ -214,22 +244,29 @@ void CommandInterpreter::cmdHelp(Motor &motor, const String &arg) {
 void CommandInterpreter::cmdUse(Motor &motor, const String &arg) {
   Entry *entry = find(arg);
   if (!entry) {
-    Serial.println("Error: Unknown motor. Type 'list' to see motors.");
+    Serial.println(F("Error: Unknown motor. Type 'list' to see motors."));
     return;
   }
   selected = entry - motors;
-  Serial.print("Selected motor: ");
+  Serial.print(F("Selected motor: "));
   Serial.println(entry->name);
 }
 
 void CommandInterpreter::cmdList(Motor &motor, const String &arg) {
-  Serial.println("Motors:");
+  Serial.println(F("Motors:"));
   for (uint8_t i = 0; i < motorCount; i++) {
-    Serial.print(i == selected ? "* " : "  ");
+    Serial.print(i == selected ? F("* ") : F("  "));
     Serial.print(motors[i].name);
-    Serial.print(motors[i].motor->asStepper() ? " (stepper)" : " (DC)");
-    Serial.print(motors[i].motor->isRunning() ? ", running, speed " : ", stopped, speed ");
-    Serial.println(motors[i].motor->getSpeed());
+    Motor *motor = motors[i].motor;
+    Serial.print(motor->asStepper() ? F(" (stepper)") : motor->asServo() ? F(" (servo)") : F(" (DC)"));
+    Serial.print(motor->isRunning() ? F(", running, ") : F(", stopped, "));
+    if (ServoMotor *servo = motor->asServo()) {
+      Serial.print(F("angle "));
+      Serial.println(servo->getAngle());
+    } else {
+      Serial.print(F("speed "));
+      Serial.println(motor->getSpeed());
+    }
   }
 }
 
@@ -252,14 +289,14 @@ void CommandInterpreter::execute(const String &name, const String &arg, Motor *t
     if (name.equalsIgnoreCase(commands[i].name)) {
       if (!target && motorCount == 0) {
         // Käsufunktsioonid vajavad mootori viidet, seega ilma mootorita käske ei täideta
-        Serial.println("Error: No motors registered.");
+        Serial.println(F("Error: No motors registered."));
         return;
       }
       (this->*commands[i].handler)(target ? *target : *motors[selected].motor, arg);
       return;
     }
   }
-  Serial.println("Unknown command! Type 'help' to see available commands.");
+  Serial.println(F("Unknown command! Type 'help' to see available commands."));
 }
 
 void CommandInterpreter::handle(String input) {
@@ -299,7 +336,7 @@ void CommandInterpreter::handle(String input) {
     arg.trim();
   }
   if (name.length() == 0) {
-    Serial.println("Error: Use '<motor> <command>', e.g. 'dc speed 200'.");
+    Serial.println(F("Error: Use '<motor> <command>', e.g. 'dc speed 200'."));
     return;
   }
   execute(name, arg, entry->motor);
