@@ -338,14 +338,17 @@ void CommandInterpreter::handle(String input) {
   }
   execute(name, arg, entry->motor);
 }
-
+//Tuvastab \n ja \r reavahetus lõppe
 void CommandInterpreter::poll() {
   while (Serial.available() > 0) {
     char c = Serial.read();
-    if (c == '\n') {
-      handle(inputLine);
-      inputLine = "";
-    } else if (c != '\r') {
+
+    if (c == '\n' || c == '\r') {
+      if (inputLine.length() > 0) {
+        handle(inputLine);
+        inputLine = "";
+      }
+    } else {
       inputLine += c;
     }
   }
