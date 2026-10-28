@@ -339,7 +339,13 @@ void CommandInterpreter::handle(String input) {
   execute(name, arg, entry->motor);
 }
 //Tuvastab \n ja \r reavahetus lõppe
+
 void CommandInterpreter::poll() {
+  static unsigned long lastCharTime = 0;
+  static bool waitingForLineEnding = false;
+
+  const unsigned long INPUT_TIMEOUT = 1000; // 1 second
+
   while (Serial.available() > 0) {
     char c = Serial.read();
 
@@ -348,11 +354,31 @@ void CommandInterpreter::poll() {
         handle(inputLine);
         inputLine = "";
       }
+
+      waitingForLineEnding = false;
     } else {
       inputLine += c;
+
+      // Start or reset the timer after every character
+      lastCharTime = millis();
+      waitingForLineEnding = true;
     }
   }
+
+  // Fallback for terminals that send no line ending
+  if (waitingForLineEnding &&
+      millis() - lastCharTime >= INPUT_TIMEOUT) {
+
+    Serial.println(
+      "No line ending detected. Executing command after 1 second of inactivity."
+    );
+
+    handle(inputLine);
+    inputLine = "";
+    waitingForLineEnding = false;
+  }
 }
+
 
 #endif // USERINTERFACE_IMPLEMENTATION
 
